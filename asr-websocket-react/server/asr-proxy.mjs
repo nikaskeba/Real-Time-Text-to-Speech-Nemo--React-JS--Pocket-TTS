@@ -331,19 +331,32 @@ const asBearerValue = (authorization) => {
   return value.toLowerCase().startsWith("bearer ") ? value : `Bearer ${value}`;
 };
 
+const firstNonEmpty = (...values) =>
+  values.find((value) => typeof value === "string" && value.trim())?.trim() ?? "";
+
 const withAuthorizationHeader = (authorization, headers = {}) =>
   authorization ? { ...headers, Authorization: authorization } : headers;
 
 const getAsrAuthorization = () =>
-  asBearerValue(process.env.ASR_AUTHORIZATION ?? process.env.ASR_API_KEY);
+  asBearerValue(firstNonEmpty(process.env.ASR_AUTHORIZATION, process.env.ASR_API_KEY));
 
 const getLlmAuthorization = () =>
   asBearerValue(
-    process.env.LLM_AUTHORIZATION ?? process.env.ASR_AUTHORIZATION ?? process.env.ASR_API_KEY,
+    firstNonEmpty(
+      process.env.LLM_AUTHORIZATION,
+      process.env.ASR_AUTHORIZATION,
+      process.env.ASR_API_KEY,
+    ),
   );
 
 const getTtsAuthorization = () =>
-  asBearerValue(process.env.TTS_AUTHORIZATION ?? process.env.ASR_AUTHORIZATION ?? process.env.ASR_API_KEY);
+  asBearerValue(
+    firstNonEmpty(
+      process.env.TTS_AUTHORIZATION,
+      process.env.ASR_AUTHORIZATION,
+      process.env.ASR_API_KEY,
+    ),
+  );
 
 const buildUpstreamWsUrl = (clientUrl) => {
   const upstreamUrl = new URL(UPSTREAM_WS_URL);
@@ -931,10 +944,11 @@ wss.on("connection", (client, request) => {
   const url = new URL(request.url ?? "/ws", `http://${request.headers.host}`);
   const upstreamWsUrl = buildUpstreamWsUrl(url);
   const authorization = asBearerValue(
-    process.env.ASR_AUTHORIZATION ??
-      process.env.ASR_API_KEY ??
-      url.searchParams.get("authorization") ??
-      "",
+    firstNonEmpty(
+      process.env.ASR_AUTHORIZATION,
+      process.env.ASR_API_KEY,
+      url.searchParams.get("authorization"),
+    ),
   );
 
   let upstreamMessageCount = 0;
