@@ -358,6 +358,24 @@ const getTtsAuthorization = () =>
     ),
   );
 
+const isQwenModel = (model) => /\bqwen/i.test(model ?? "");
+
+const buildChatCompletionBody = (body, maxTokens, hasMaxTokens, contextWindow, hasContextWindow) => {
+  const model = body.model || DEFAULT_LLM_MODEL;
+  return {
+    model,
+    messages: body.messages,
+    stream: body.stream ?? true,
+    temperature: body.temperature ?? 0.7,
+    ...(hasMaxTokens ? { max_tokens: Math.floor(maxTokens) } : {}),
+    ...(hasContextWindow ? { context_window: Math.floor(contextWindow) } : {}),
+    ...(body.chat_template_kwargs ? { chat_template_kwargs: body.chat_template_kwargs } : {}),
+    ...(isQwenModel(model) && !body.chat_template_kwargs
+      ? { chat_template_kwargs: { enable_thinking: false } }
+      : {}),
+  };
+};
+
 const buildUpstreamWsUrl = (clientUrl) => {
   const upstreamUrl = new URL(UPSTREAM_WS_URL);
   for (const [key, value] of clientUrl.searchParams) {
@@ -881,14 +899,9 @@ const handleChatCompletions = async (request, response) => {
         Authorization: authorization,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        model: body.model || DEFAULT_LLM_MODEL,
-        messages: body.messages,
-        stream: body.stream ?? true,
-        temperature: body.temperature ?? 0.7,
-        ...(hasMaxTokens ? { max_tokens: Math.floor(maxTokens) } : {}),
-        ...(hasContextWindow ? { context_window: Math.floor(contextWindow) } : {}),
-      }),
+      body: JSON.stringify(
+        buildChatCompletionBody(body, maxTokens, hasMaxTokens, contextWindow, hasContextWindow),
+      ),
     });
 
     const contentType = upstreamResponse.headers.get("content-type") ?? "text/event-stream";
