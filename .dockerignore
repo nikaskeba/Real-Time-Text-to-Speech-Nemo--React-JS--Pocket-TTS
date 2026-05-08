@@ -1,0 +1,14 @@
+.git
+**/.git
+**/.DS_Store
+**/__pycache__
+**/*.pyc
+**/.host-venv
+**/.venv
+**/venv
+**/node_modules
+**/dist
+**/*.log
+**/.env
+nemo-asr/models
+pocket-tts/voices

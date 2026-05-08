@@ -1,0 +1,21 @@
+{
+  "name": "asr-websocket-react",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node server/dev.mjs",
+    "dev:client": "vite --host 127.0.0.1 --port 5173",
+    "dev:proxy": "node server/asr-proxy.mjs",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1 --port 4173"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "^5.1.1",
+    "vite": "^7.2.7",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3",
+    "ws": "^8.18.3"
+  },
+  "devDependencies": {}
+}

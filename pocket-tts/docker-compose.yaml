@@ -1,0 +1,23 @@
+services:
+  pocket_tts:
+    build: .
+    container_name: pocket_tts
+    restart: unless-stopped
+    ports:
+      - "9080:9080"
+    environment:
+      HOST: "0.0.0.0"
+      PORT: "9080"
+      TTS_UPSTREAM_BASE: "http://host.docker.internal:9081"
+      TTS_UPSTREAM_TIMEOUT: "300"
+      REQUIRE_AUTH: "1"
+      DB_API_BASE: "http://mysql_api:3001"
+      DB_API_PREFIX: "/db-api"
+      DB_API_TIMEOUT: "8.0"
+    networks:
+      - default
+      - n8n_default
+
+networks:
+  n8n_default:
+    external: true

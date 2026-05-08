@@ -1,0 +1,28 @@
+services:
+  nemo_asr:
+    build:
+      context: ..
+      dockerfile: nemo-asr/Dockerfile
+    container_name: nemo_asr
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "9090:9090"
+    environment:
+      HOST: "0.0.0.0"
+      PORT: "9090"
+      ASR_WS_ENDPOINT: "ws://host.docker.internal:9091/ws"
+      ASR_API_BASE_URL: "http://host.docker.internal:9091"
+      TTS_API_BASE_URL: "http://host.docker.internal:9081"
+      LLM_API_BASE_URL: "http://host.docker.internal:5001"
+      LLM_MODEL: "gemma-3-4b-it"
+    networks:
+      - default
+      - n8n_default
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+networks:
+  n8n_default:
+    external: true

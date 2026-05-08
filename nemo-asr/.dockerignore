@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+models/
+.host-venv/
+asr-websocket-react/node_modules/
+asr-websocket-react/dist/
+host-asr.out.log
+host-asr.err.log
+test-diarize.wav
+test-diarize-16k.wav
