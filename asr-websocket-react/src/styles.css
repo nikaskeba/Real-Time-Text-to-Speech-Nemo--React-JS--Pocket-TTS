@@ -368,6 +368,39 @@ article.chatMessage.assistant {
   background: #edf8f2;
 }
 
+.roomToneControl {
+  display: grid;
+  gap: 8px;
+  align-content: end;
+  min-height: 44px;
+  border: 1px solid #c8d3dc;
+  border-radius: 6px;
+  padding: 10px 12px;
+  background:
+    linear-gradient(135deg, rgba(238, 247, 244, 0.95), rgba(251, 252, 253, 0.95)),
+    #fbfcfd;
+}
+
+.checkboxLabel {
+  display: flex;
+  grid-template-columns: none;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.82rem;
+}
+
+.checkboxLabel input {
+  width: 16px;
+  min-height: 16px;
+  accent-color: #1f6f8b;
+}
+
+.roomToneControl input[type="range"] {
+  min-height: 22px;
+  padding: 0;
+  accent-color: #1f6f8b;
+}
+
 .latencyList {
   display: grid;
   gap: 8px;

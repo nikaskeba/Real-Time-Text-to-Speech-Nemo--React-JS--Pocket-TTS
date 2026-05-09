@@ -31,6 +31,10 @@ const DEFAULT_CHAT_MAX_TOKENS = import.meta.env.VITE_LLM_MAX_TOKENS ?? "96";
 const DEFAULT_CHAT_CONTEXT_WINDOW = import.meta.env.VITE_LLM_CONTEXT_WINDOW ?? "2048";
 const DEFAULT_CHAT_SYSTEM_PROMPT =
   "You are a concise voice assistant. Reply naturally in one or two short spoken paragraphs.";
+const DEFAULT_CHAT_ROOM_TONE_ENABLED =
+  import.meta.env.VITE_CHAT_ROOM_TONE_ENABLED !== "0";
+const DEFAULT_CHAT_ROOM_TONE_VOLUME = import.meta.env.VITE_CHAT_ROOM_TONE_VOLUME ?? "2.5";
+const MAX_ROOM_TONE_GAIN = 0.04;
 const DUPLICATE_CHAT_TURN_WINDOW_MS = 60000;
 const buildChatAsrVadConfig = (mode = "balanced") => ({
   type: "configure",
@@ -1117,6 +1121,76 @@ const playPcmStream = async ({ response, onAudioContext, onChunk, signal }) => {
   };
 };
 
+const createRoomToneBed = async (volumePercent) => {
+  const AudioContext = window.AudioContext ?? window.webkitAudioContext;
+  if (!AudioContext) {
+    throw new Error("This browser does not support Web Audio.");
+  }
+
+  const audioContext = new AudioContext();
+  await audioContext.resume?.();
+
+  const seconds = 2;
+  const sampleCount = Math.floor(audioContext.sampleRate * seconds);
+  const buffer = audioContext.createBuffer(1, sampleCount, audioContext.sampleRate);
+  const channel = buffer.getChannelData(0);
+  let pink = 0;
+
+  for (let index = 0; index < sampleCount; index += 1) {
+    const white = Math.random() * 2 - 1;
+    pink = pink * 0.985 + white * 0.015;
+    channel[index] = pink + white * 0.025;
+  }
+
+  const source = audioContext.createBufferSource();
+  const highpass = audioContext.createBiquadFilter();
+  const lowpass = audioContext.createBiquadFilter();
+  const gain = audioContext.createGain();
+
+  source.buffer = buffer;
+  source.loop = true;
+  highpass.type = "highpass";
+  highpass.frequency.value = 90;
+  lowpass.type = "lowpass";
+  lowpass.frequency.value = 6200;
+  gain.gain.value = 0;
+
+  source.connect(highpass);
+  highpass.connect(lowpass);
+  lowpass.connect(gain);
+  gain.connect(audioContext.destination);
+
+  const setVolume = (nextVolumePercent) => {
+    const normalized = Math.max(0, Math.min(10, Number(nextVolumePercent) || 0)) / 10;
+    const targetGain = normalized * MAX_ROOM_TONE_GAIN;
+    gain.gain.cancelScheduledValues(audioContext.currentTime);
+    gain.gain.setTargetAtTime(targetGain, audioContext.currentTime, 0.08);
+  };
+
+  source.start();
+  setVolume(volumePercent);
+
+  return {
+    context: audioContext,
+    setVolume,
+    stop: async (immediate = false) => {
+      gain.gain.cancelScheduledValues(audioContext.currentTime);
+      if (immediate) {
+        gain.gain.value = 0;
+      } else {
+        gain.gain.setTargetAtTime(0, audioContext.currentTime, 0.12);
+        await new Promise((resolve) => setTimeout(resolve, 350));
+      }
+      try {
+        source.stop();
+      } catch {
+        // The source may already be stopped during teardown.
+      }
+      await audioContext.close?.();
+    },
+  };
+};
+
 const startPcmStream = ({ audioStream, socket, sampleRate, onChunk }) => {
   const AudioContext = window.AudioContext ?? window.webkitAudioContext;
   const audioContext = new AudioContext();
@@ -1211,6 +1285,12 @@ export default function App() {
   const [isVoiceChatActive, setIsVoiceChatActive] = useState(false);
   const [isChatResponding, setIsChatResponding] = useState(false);
   const [isChatSpeaking, setIsChatSpeaking] = useState(false);
+  const [isChatRoomToneEnabled, setIsChatRoomToneEnabled] = useState(
+    DEFAULT_CHAT_ROOM_TONE_ENABLED,
+  );
+  const [chatRoomToneVolume, setChatRoomToneVolume] = useState(
+    DEFAULT_CHAT_ROOM_TONE_VOLUME,
+  );
   const [cloneId, setCloneId] = useState("");
   const [cloneLanguage, setCloneLanguage] = useState("english");
   const [cloneFile, setCloneFile] = useState(null);
@@ -1237,6 +1317,8 @@ export default function App() {
   const chatTtsAudioContextRef = useRef(null);
   const chatTtsDelayTimerRef = useRef(null);
   const chatTtsDelayResolveRef = useRef(null);
+  const chatRoomToneRef = useRef(null);
+  const chatRoomToneStartIdRef = useRef(0);
   const chatSpeechQueueRef = useRef([]);
   const chatSpeechQueueRunningRef = useRef(false);
   const chatMessagesRef = useRef([]);
@@ -1361,6 +1443,32 @@ export default function App() {
     chatTimingRef.current = { ...current };
     setChatTiming(chatTimingRef.current);
     return now;
+  };
+
+  const stopChatRoomTone = (immediate = false) => {
+    chatRoomToneStartIdRef.current += 1;
+    const bed = chatRoomToneRef.current;
+    chatRoomToneRef.current = null;
+    bed?.stop?.(immediate).catch(() => {});
+  };
+
+  const startChatRoomTone = async () => {
+    if (!isChatRoomToneEnabled || chatRoomToneRef.current) {
+      return;
+    }
+
+    const startId = chatRoomToneStartIdRef.current + 1;
+    chatRoomToneStartIdRef.current = startId;
+    try {
+      const bed = await createRoomToneBed(chatRoomToneVolume);
+      if (chatRoomToneStartIdRef.current !== startId) {
+        await bed.stop(true);
+        return;
+      }
+      chatRoomToneRef.current = bed;
+    } catch {
+      chatRoomToneRef.current = null;
+    }
   };
 
   const stopChatTts = () => {
@@ -2284,6 +2392,7 @@ export default function App() {
     chatAbortRef.current = null;
     chatRequestIdRef.current = "";
     stopChatTts();
+    stopChatRoomTone();
     setIsVoiceChatActive(false);
     chatRespondingRef.current = false;
     setIsChatResponding(false);
@@ -2321,6 +2430,7 @@ export default function App() {
         audio: buildAudioCaptureConstraints(),
       });
       chatStreamRef.current = audioStream;
+      void startChatRoomTone();
       loadAudioInputs().catch(() => {});
 
       setChatStatus("Connecting VAD websocket");
@@ -2636,6 +2746,7 @@ export default function App() {
     chatSocketRef.current?.close?.();
     stopChatAudioCapture();
     stopChatTts();
+    stopChatRoomTone(true);
     stopAudioCapture();
     closeSocket();
   };
@@ -2671,6 +2782,18 @@ export default function App() {
       loadChatModels();
     }
   }, [activeTab, chatModels.length, isChatModelsLoading]);
+
+  useEffect(() => {
+    chatRoomToneRef.current?.setVolume?.(chatRoomToneVolume);
+  }, [chatRoomToneVolume]);
+
+  useEffect(() => {
+    if (isVoiceChatActive && isChatRoomToneEnabled) {
+      void startChatRoomTone();
+      return;
+    }
+    stopChatRoomTone();
+  }, [isVoiceChatActive, isChatRoomToneEnabled]);
 
   const startStreaming = async () => {
     setError("");
@@ -3486,6 +3609,29 @@ export default function App() {
                 {renderVoiceOptions()}
               </select>
             </label>
+
+            <div className="roomToneControl">
+              <label className="checkboxLabel">
+                <input
+                  type="checkbox"
+                  checked={isChatRoomToneEnabled}
+                  onChange={(event) => setIsChatRoomToneEnabled(event.target.checked)}
+                />
+                <span>Room tone mask</span>
+              </label>
+              <label>
+                <span>Mask volume {Number(chatRoomToneVolume).toFixed(1)}</span>
+                <input
+                  type="range"
+                  min="0"
+                  max="10"
+                  step="0.5"
+                  value={chatRoomToneVolume}
+                  onChange={(event) => setChatRoomToneVolume(event.target.value)}
+                  disabled={!isChatRoomToneEnabled}
+                />
+              </label>
+            </div>
 
             <label className="textAreaLabel">
               <span>System prompt</span>
